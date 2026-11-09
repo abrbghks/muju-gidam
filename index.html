@@ -114,6 +114,8 @@
 <body>
 <div id="stage"><div id="dim"></div></div>
 <div id="fade"></div>
+<div id="bgm" style="position:fixed;left:0;bottom:0;width:200px;height:200px;opacity:.01;pointer-events:none;z-index:-1;overflow:hidden;" aria-hidden="true"><div id="bgmPlayer"></div></div>
+<div id="bgmNote" style="display:none;position:fixed;left:12px;bottom:12px;max-width:80vw;z-index:100003;padding:6px 10px;background:#232323;color:#FFA01E;box-shadow:0 0 0 2px #FFA01E;font-size:12px;line-height:1.5;"></div>
 <button id="sound" aria-label="효과음 켜기/끄기">소리 ON</button>
 <div id="fx" class="fx"></div>
 <div id="noise" class="fx"></div>
@@ -143,6 +145,7 @@
    - fadeOthers: 0.25 를 적으면 그 창이 뜰 때 이미 떠 있던 다른 창들이 희미해집니다.
    - darken: 0.8 을 적으면 그 창이 뜰 때 배경이 서서히 어두워집니다. (darkenTime: 7000 으로 걸리는 시간 조절)
      다음 날로 넘어가면(> 링크) 배경은 자동으로 원래대로 돌아옵니다.
+   (배경음악은 파일 맨 위 BGM_ID, BGM_VOLUME 으로 바꿉니다. 시작하기를 누르면 서서히 시작되고 엔딩에서 서서히 멈춥니다.)
    - next: "장면이름" 을 적으면, 그 창의 글자가 다 나온 뒤 다음 창이 자동으로 뜹니다.
      (뜨기까지의 시간은 delay: 1200 처럼 밀리초로 조절, 기본 1.2초)
      next: ">장면이름" 처럼 > 를 붙이면 자동으로 다음 날(장)로 넘어갑니다.
@@ -158,6 +161,8 @@ const GAME_TITLE = "빈 집無主奇談";   // 시작 화면에 나오는 제목
 const FIRST_SCENE = "d1_envelope";
 const SCREEN_FX = true;   // 화면 효과(화소 격자·가장자리 어둡게·노이즈). false 로 하면 꺼집니다.
 const LINK_DELAY = 700;   // 본문이 다 나온 뒤 밑줄 선택지가 나오기까지 기다리는 시간(밀리초). 0이면 쉬지 않음.
+const BGM_ID = "qKhCXO_Ggy4";   // (예비) 같은 폴더에 bgm.mp3 가 없을 때만 쓰는 유튜브 영상 ID. bgm.mp3 가 있으면 그 파일이 우선입니다.
+const BGM_VOLUME = 40;          // 배경음악 음량 0~100. 작을수록 잔잔합니다. 0이면 틀지 않음.
 const TYPE_SPEED = 45;   // 한 글자가 나오는 간격(밀리초). 작을수록 빠릅니다. 0이면 타이핑 효과 없음.
 
 const STORY = {
@@ -980,6 +985,101 @@ function runSfx(scene, onEnd) {
   else finish();
 }
 
+// ===== 배경음악 (유튜브 공식 플레이어를 화면 밖에 두고 소리만 재생) =====
+let bgm = null, bgmReady = false, bgmWanted = false, bgmFade = null;
+
+function loadYoutube() {
+  if (!BGM_ID) return;
+  if (window.YT && window.YT.Player) { window.onYouTubeIframeAPIReady(); return; }
+  const tag = document.createElement("script");
+  tag.src = "https://www.youtube.com/iframe_api";
+  tag.onerror = () => bgmNotice("배경음악을 불러오지 못했어요. 인터넷 연결이나 차단 설정(광고 차단 등)을 확인해 주세요.");
+  document.head.appendChild(tag);
+}
+function loadBgm() {
+  if (!BGM_VOLUME) return;
+  // 같은 폴더의 bgm.mp3 가 있으면 그 파일을 끊김 없이 반복 재생, 없으면 유튜브(BGM_ID)로 재생
+  fetch("bgm.mp3").then(r => r.ok ? r.arrayBuffer() : Promise.reject()).then(useLocalBgm)
+    .catch(() => { if (BGM_ID) loadYoutube(); });
+}
+function useLocalBgm(raw) {
+  let buf = null, src = null, gain = null, vol = 0, playing = false, want = false, decoding = false;
+  const start = () => {
+    if (!buf || !want || playing || !audioCtx) return;
+    if (!gain) { gain = audioCtx.createGain(); gain.gain.value = vol / 100; gain.connect(audioCtx.destination); }
+    src = audioCtx.createBufferSource(); src.buffer = buf; src.loop = true;   // 반복 재생 (이음새 없음)
+    src.connect(gain); src.start(); playing = true;
+  };
+  bgm = {
+    playVideo: () => {
+      want = true;
+      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+      if (buf) { start(); return; }
+      if (decoding || !audioCtx) return;
+      decoding = true;
+      audioCtx.decodeAudioData(raw.slice(0)).then(b => { buf = b; decoding = false; start(); })
+        .catch(() => { decoding = false; bgmNotice("배경음악 파일(bgm.mp3)을 읽지 못했어요."); });
+    },
+    pauseVideo: () => { want = false; if (src) { try { src.stop(); } catch (e) {} src = null; } playing = false; },
+    seekTo: () => {},
+    setVolume: v => { vol = v; if (gain) gain.gain.setTargetAtTime(v / 100, audioCtx.currentTime, 0.05); },
+    getVolume: () => vol,
+    getPlayerState: () => (playing ? 1 : 2)
+  };
+  bgmReady = true;
+  if (bgmWanted) startBgm();
+}
+let bgmNoteTimer = null;
+function bgmNotice(msg) {                    // 문제가 생기면 화면 왼쪽 아래에 이유를 잠깐 보여줌
+  console.warn(msg);
+  const n = document.getElementById("bgmNote");
+  n.textContent = msg; n.style.display = "block";
+  clearTimeout(bgmNoteTimer); bgmNoteTimer = setTimeout(() => { n.style.display = "none"; }, 12000);
+}
+function kickBgm() {                         // 브라우저가 자동 재생을 막았다면, 다음 클릭 때 다시 재생 시도
+  if (!bgmWanted || !bgmReady || !bgm.getPlayerState) return;
+  const st = bgm.getPlayerState();
+  if (st !== 1 && st !== 3) bgm.playVideo();
+}
+window.onYouTubeIframeAPIReady = function () {
+  bgm = new YT.Player("bgmPlayer", {
+    width: 200, height: 200, videoId: BGM_ID,
+    playerVars: { controls: 0, disablekb: 1, playsinline: 1, rel: 0, modestbranding: 1 },
+    events: {
+      onReady: () => { bgmReady = true; bgm.setVolume(0); if (bgmWanted) startBgm(); },
+      onStateChange: e => { if (e.data === YT.PlayerState.ENDED && bgmWanted) { bgm.seekTo(0); bgm.playVideo(); } },   // 끝나면 처음부터 반복
+      onError: e => {
+        const why = { 2: "영상 주소(ID)가 올바르지 않아요.", 5: "브라우저가 이 영상을 재생하지 못해요.", 100: "영상이 삭제되었거나 비공개예요.",
+                      101: "올린 사람이 영상 삽입(외부 재생)을 막아 두었어요.", 150: "올린 사람이 영상 삽입(외부 재생)을 막아 두었어요." }[e.data] || "알 수 없는 오류예요.";
+        bgmNotice("배경음악을 재생할 수 없어요 (" + e.data + "): " + why);
+      }
+    }
+  });
+};
+
+function bgmTarget() { return soundOn ? BGM_VOLUME : 0; }
+function bgmRamp(to, ms, done) {            // 음량을 부드럽게 바꿈
+  if (!bgmReady) return;
+  clearInterval(bgmFade);
+  let v = bgm.getVolume(); const steps = Math.max(1, Math.round(ms / 100)), d = (to - v) / steps; let i = 0;
+  bgmFade = setInterval(() => {
+    i++; v += d; bgm.setVolume(Math.max(0, Math.min(100, Math.round(v))));
+    if (i >= steps) { clearInterval(bgmFade); bgm.setVolume(to); if (done) done(); }
+  }, 100);
+}
+function startBgm() {                       // 시작하기 버튼에서 호출 (사용자가 누른 뒤에만 소리를 낼 수 있음)
+  if (!BGM_VOLUME) return;
+  bgmWanted = true;
+  if (!bgmReady) return;                    // 아직 준비 중이면 준비되는 즉시 시작
+  bgm.playVideo();
+  bgmRamp(bgmTarget(), 4000);               // 4초에 걸쳐 서서히 커짐
+}
+function stopBgm(ms) {                      // 엔딩: 서서히 줄이고 멈춤
+  bgmWanted = false;
+  if (!bgmReady) return;
+  bgmRamp(0, ms ?? 3000, () => bgm.pauseVideo());
+}
+
 function keySound(ch) {
   if (ch === "\n") return;                 // 줄바꿈에서는 소리 없음
   else if (ch === " ") playKey(true);
@@ -1236,6 +1336,7 @@ function endGame() {
   fade.style.transitionDuration = "2.5s";             // 서서히 밝아짐
   fade.classList.add("bright", "on");                 // 1) 화면이 환하게 밝아짐
   if (rainGain) setRain(0, 2.5);                      // 남아 있던 빗소리도 같이 잦아듦
+  stopBgm(3000);                                      // 배경음악도 서서히 줄어듦
   setTimeout(() => {
     Object.keys(open).forEach(k => { open[k].remove(); delete open[k]; });
     finished.clear(); pending.clear();
@@ -1257,17 +1358,19 @@ function endGame() {
 }
 
 // 시작 화면 + 소리 버튼
+loadBgm();
 if (!SCREEN_FX) document.querySelectorAll(".fx").forEach(e => e.remove());
 document.getElementById("title").innerHTML =
   esc(GAME_TITLE).replace(/[\u4E00-\u9FFF]+/g, m => `<br><span class="hanja">${m}</span>`);
 const startScreen = document.getElementById("start");
 const soundBtn = document.getElementById("sound");
 
-document.addEventListener("pointerdown", initAudio);   // 클릭할 때마다 소리가 막혀 있지 않은지 확인
+document.addEventListener("pointerdown", () => { initAudio(); kickBgm(); });   // 클릭할 때마다 소리가 막혀 있지 않은지 확인
 
 document.getElementById("startBtn").onclick = () => {
   initAudio();
   preloadSounds();                          // 효과음 파일 미리 불러오기
+  startBgm();                               // 배경음악 시작
   startScreen.classList.add("hide");
   setTimeout(() => (STORY[FIRST_SCENE].chapter ? chapterJump(FIRST_SCENE) : openScene(FIRST_SCENE)), 350);
 };
@@ -1276,6 +1379,7 @@ soundBtn.onclick = () => {
   soundOn = !soundOn;
   soundBtn.textContent = soundOn ? "소리 ON" : "소리 OFF";
   if (rainGain) rainGain.gain.setTargetAtTime(soundOn ? rainLevel : 0, audioCtx.currentTime, 0.2);
+  if (bgmReady && bgmWanted) bgmRamp(bgmTarget(), 400);   // 배경음악도 같이 켜고 끔
 };
 </script>
 </body>
