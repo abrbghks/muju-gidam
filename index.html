@@ -1,0 +1,1282 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 텍스트 노벨</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;600&family=Noto+Serif+KR:wght@200;300&family=Nanum+Gothic+Coding&display=swap">
+<style>
+  /* ===== 배경 이미지를 바꾸려면 아래 none 을 url("background.jpg") 로 바꾸세요 ===== */
+  :root {
+    --bg-image: none;
+    --orange: #FFA01E;        /* 글씨·테두리 색 */
+    --orange-light: #FFCA4D;  /* 밑줄 링크 색 */
+    --orange-dim: #A8711F;    /* 이미 눌러 본 링크 색 */
+    --ink: #232323;           /* 포스트잇 바탕 */
+    --ink-dark: #161616;      /* 제목줄 바탕 */
+    --font: "Gothic A1", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    /* 테두리: 꼭지점까지 꽉 찬 네모 2px (두께를 바꾸려면 2px 를 고치세요) */
+    --frame: 0 0 0 2px var(--orange);
+  }
+
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: var(--font); }
+
+  #stage { position: fixed; inset: 0;
+    background: var(--bg-image), linear-gradient(160deg, #C9843F 0%, #B56B25 50%, #97541A 100%);
+    background-size: cover; background-position: center; }
+
+  /* 장면에 darken 을 적으면 이 막이 서서히 짙어져서 배경만 어두워집니다 (창은 그 위에 그대로 보임) */
+  #dim { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 1;
+    transition: opacity 6s ease-in; }
+
+  .note { position: absolute; width: min(340px, 88vw); background: var(--ink); color: var(--orange);
+    box-shadow: var(--frame), 6px 6px 0 2px rgba(0,0,0,.28);
+    cursor: move; touch-action: none; user-select: none;
+    animation: pop .2s steps(4); transition: opacity 1.4s; }
+  /* 문서(사건 파일) 창: 넓고, 글자는 등폭(칸 맞춤)이며, 길면 안에서 스크롤 */
+  .note.doc { width: min(600px, 94vw); cursor: default; touch-action: pan-y; }
+  .note.doc .body { font-family: "Nanum Gothic Coding", "D2Coding", "Malgun Gothic", monospace; font-size: 13px;
+    line-height: 1.65; padding: 18px 20px 22px; max-height: 80vh; overflow-y: auto; text-shadow: none;
+    scrollbar-width: thin; scrollbar-color: var(--orange) var(--ink-dark); }
+  .note.flash { animation: flash .35s steps(2); }
+  .body { padding: 16px 18px 20px; font-size: 16px; line-height: 1.75; white-space: pre-wrap;
+    text-shadow: 0 0 6px rgba(255,160,30,.4); }   /* 글씨 번짐(발광) 효과 */
+
+  a.link { color: var(--orange-light); text-decoration: underline; text-decoration-thickness: 2px;
+    text-underline-offset: 4px; cursor: pointer; }
+  a.link.visited { color: var(--orange-dim); }
+  .typing a.link { pointer-events: none; }   /* 타이핑 중에는 링크가 눌리지 않음 */
+  .body.ends-link { padding-bottom: 0; }   /* 밑줄 선택지로 끝나는 창은 아래 여백 없음 */
+  em { font-style: normal; color: #FFEECC; }
+  a.link:hover { background: var(--orange); color: var(--ink); }
+
+  /* 날짜(챕터) 넘어갈 때의 암전 + 제목 카드 */
+  #fade { position: fixed; inset: 0; z-index: 99999; background: var(--ink-dark); opacity: 0; pointer-events: none;
+    transition: opacity .6s; display: flex; align-items: center; justify-content: center;
+    color: var(--orange); font-size: clamp(24px, 6vw, 40px); letter-spacing: .03em; }
+  #fade.on { opacity: 1; pointer-events: auto; }
+
+  /* 시작 화면 (브라우저 규칙상 소리는 클릭 한 번이 있어야 나기 때문에 필요합니다) */
+  #start { position: fixed; inset: 0; z-index: 100001; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 32px; background: rgba(22,22,22,.85); color: var(--orange);
+    transition: opacity .5s; }
+  #start.hide { opacity: 0; pointer-events: none; }
+  #start h1 { margin: 0; font-weight: 400; font-size: clamp(28px, 7vw, 48px); letter-spacing: .12em;
+    writing-mode: vertical-rl; text-align: center; max-height: 62vh; padding: 0 16px; line-height: 1.5; }   /* 세로쓰기 */
+  #start h1 .hanja { font-family: "Noto Serif KR", "Batang", "Nanum Myeongjo", serif; font-weight: 200; font-size: .5em; }  /* 한자: 얇은 명조 */
+  #start button { font: inherit; font-size: 16px; padding: 10px 28px; border: 0; background: var(--ink);
+    color: var(--orange); cursor: pointer; box-shadow: var(--frame); }
+  #start button:hover { background: var(--orange); color: var(--ink); }
+  #sound { position: fixed; top: 14px; right: 14px; z-index: 100000; padding: 6px 10px; border: 0;
+    background: var(--ink); color: var(--orange); font: inherit; font-size: 12px; cursor: pointer;
+    box-shadow: var(--frame); }
+
+  /* ===== 화면 효과: LED 화소 격자 + 중심은 밝고 가장자리는 둥글게 어둡게 + 지글거리는 노이즈 ===== */
+  .fx { position: fixed; inset: 0; pointer-events: none; z-index: 100002; }
+  #fx { background:
+      radial-gradient(ellipse at center, rgba(255,214,170,.07) 0%, rgba(255,214,170,0) 60%),      /* 중심부 은은한 빛 */
+      radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,.6) 100%),                 /* 가장자리 어둡게 (진하기: .6) */
+      repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, rgba(0,0,0,0) 1px 3px),              /* 가로 화소 줄 */
+      repeating-linear-gradient(90deg, rgba(255,0,0,.07) 0 1px, rgba(0,255,0,.07) 1px 2px, rgba(0,0,255,.07) 2px 3px); }  /* 세로 RGB 화소 */
+  #noise { opacity: .08; animation: noise .5s steps(1) infinite;   /* opacity 가 노이즈 진하기 */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  @keyframes noise {
+    0% { background-position: 0 0; } 20% { background-position: -37px 23px; }
+    40% { background-position: 61px -48px; } 60% { background-position: -83px -17px; }
+    80% { background-position: 29px 71px; } }
+
+  /* 마지막 장: 색 반전 (배경은 어둡게, 말풍선은 주황 바탕에 검정 글씨, 장 전환 화면은 주황색) */
+  body.invert #stage { background: var(--bg-image), linear-gradient(160deg, #241b14 0%, #171210 55%, #0e0b09 100%);
+    background-size: cover; background-position: center; }
+  body.invert .note { background: var(--orange); color: var(--ink-dark);
+    box-shadow: 0 0 0 2px var(--ink-dark), 6px 6px 0 2px rgba(0,0,0,.5); }   /* 테두리: 어두운 색 (겹친 창 구분용) */
+  body.invert .body { text-shadow: none; }
+  body.invert a.link { color: #4a1f00; }
+  body.invert a.link.visited { color: #8a5a22; }
+  body.invert a.link:hover { background: var(--ink-dark); color: var(--orange); }
+  body.invert em { color: #3b1500; }
+  #fade.invert { background: var(--orange); color: var(--ink-dark); }
+  #fade.bright { background: #FFF1D6; }
+
+  @keyframes shake {
+    0% { transform: translate(0,0); } 10% { transform: translate(-5px,3px); } 20% { transform: translate(5px,-3px); }
+    30% { transform: translate(-4px,-4px); } 40% { transform: translate(4px,4px); } 50% { transform: translate(-3px,2px); }
+    60% { transform: translate(3px,-2px); } 70% { transform: translate(-2px,-2px); } 80% { transform: translate(2px,2px); }
+    100% { transform: translate(0,0); } }
+  .note.shaking { animation: shake .6s linear; }
+
+  @keyframes pop { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes flash { 50% { filter: brightness(1.5); } }
+</style>
+</head>
+<body>
+<div id="stage"><div id="dim"></div></div>
+<div id="fade"></div>
+<button id="sound" aria-label="효과음 켜기/끄기">소리 ON</button>
+<div id="fx" class="fx"></div>
+<div id="noise" class="fx"></div>
+<div id="start"><h1 id="title"></h1><button id="startBtn">시작하기</button></div>
+
+<script>
+/* =====================================================================
+   여기가 이야기를 쓰는 곳입니다. 이 부분만 고치면 됩니다.
+
+   - 장면 하나 = 창 하나입니다.
+   - 장면 이름(start, letter ...)은 영어/숫자로, 띄어쓰기 없이 지어주세요.
+   - 밑줄 링크 쓰는 법:  {{보이는 글자|열릴 장면 이름}}
+   - 줄바꿈은 그냥 엔터를 치면 됩니다 (백틱 ` 안에서).
+   - 링크 없는 장면은 이야기의 끝(엔딩)이 됩니다.
+   - *글자* 처럼 별표로 감싸면 강조(밝은 색)가 됩니다.
+   - shake: true 를 적으면 그 창이 뜨기 전에 떠 있는 창들이 먼저 진동하고, 잠깐(shakeWait: 1100 밀리초) 기다린 뒤 그 창이 뜹니다.
+   - sfx: "phone" 은 장 제목이 나온 뒤 전화 연결음이 울리다 달칵 하고 끊기게 하고, rain: 0.3 은 그 뒤부터 빗소리(rain.mp3)를 그 음량으로 깔기 시작합니다.
+     (rain: 0 을 적은 장부터는 빗소리가 멈춥니다. chapter 가 있는 장에서만 동작)
+   - doc: true 는 사건 파일 같은 긴 문서용 넓은 창(등폭 글꼴·안에서 스크롤)이고, place: "middle" 은 화면 정중앙에 띄웁니다.
+   - typeSpeed: 35 는 그 창만 글자가 나오는 간격(밀리초)을 따로 정합니다. (작을수록 빠름)
+   - rainFade: { from: 0.12, to: 0.5 } 는 그 창의 글자가 12%~50% 나오는 동안 빗소리가 서서히 줄어 안 들리게 합니다.
+   - theme: "invert" 는 그 장부터 색을 반전합니다(전환 화면은 주황, 말풍선은 주황 바탕+검정 글씨). hold: 2000 은 제목이 없는 장의 전환 화면을 보여주는 시간입니다.
+   - ending: true 는 그 창의 글자가 다 나온 뒤(delay 후) 화면이 밝아지며 시작 화면으로 돌아가게 합니다.
+   - place: "center" 는 화면 중앙에, place: "below" 는 앞 창 바로 아래에 이어 붙여서 띄웁니다.
+   - darkenAfter: 0.92 를 적으면 글자가 다 나온 뒤(readTime 만큼 읽을 시간을 준 뒤) 배경이 어두워지며 기존 창들이 어둠에 묻히고,
+     다 어두워진 다음 next 창이 뜹니다.
+   - fadeOthers: 0.25 를 적으면 그 창이 뜰 때 이미 떠 있던 다른 창들이 희미해집니다.
+   - darken: 0.8 을 적으면 그 창이 뜰 때 배경이 서서히 어두워집니다. (darkenTime: 7000 으로 걸리는 시간 조절)
+     다음 날로 넘어가면(> 링크) 배경은 자동으로 원래대로 돌아옵니다.
+   - next: "장면이름" 을 적으면, 그 창의 글자가 다 나온 뒤 다음 창이 자동으로 뜹니다.
+     (뜨기까지의 시간은 delay: 1200 처럼 밀리초로 조절, 기본 1.2초)
+     next: ">장면이름" 처럼 > 를 붙이면 자동으로 다음 날(장)로 넘어갑니다.
+
+   [날짜 넘기기] 장면 이름 앞에 > 를 붙이면 "다음 날로 넘어가기"가 됩니다.
+       {{다음 날 아침|>day2}}
+     → 화면이 어두워지면서 열려 있던 메모가 전부 사라지고,
+       빈 화면에 day2 장면의 새 메모가 떠오릅니다.
+     장면에 chapter: "2일차" 를 적어두면 어두운 화면에서 그 글자가 효과음과 함께 한 글자씩 타이핑됩니다.
+     장면에 bg: "night.jpg" 를 적어두면 그 날의 배경 이미지도 바뀝니다. (둘 다 선택사항)
+   ===================================================================== */
+const GAME_TITLE = "빈 집無主奇談";   // 시작 화면에 나오는 제목
+const FIRST_SCENE = "d1_envelope";
+const SCREEN_FX = true;   // 화면 효과(화소 격자·가장자리 어둡게·노이즈). false 로 하면 꺼집니다.
+const LINK_DELAY = 700;   // 본문이 다 나온 뒤 밑줄 선택지가 나오기까지 기다리는 시간(밀리초). 0이면 쉬지 않음.
+const TYPE_SPEED = 45;   // 한 글자가 나오는 간격(밀리초). 작을수록 빠릅니다. 0이면 타이핑 효과 없음.
+
+const STORY = {
+  /* ---------- 1일차 ---------- */
+  d1_envelope: {
+    next: "d1_voices",     // next: 이 창의 글자가 다 나오면 자동으로 다음 창이 뜹니다
+    text: `더이상 기능할 수 없게 된 것들이 봉투에 담긴다.
+기능할 수 없더라도, 다른 사료를 제시할 수 있는 물건들.
+빛이 번쩍이고, 봉지가 바스락대며, 테이프가 감기고, 발자국이 주변을 맴돌다가…
+코 앞에서 멎는다.`
+  },
+
+  d1_voices: {
+    text: `사람들의 말소리가 들린다.
+*그들*이 당신에게 말을 걸고 있다.
+
+{{나에게?|d1_you}}`
+  },
+
+  d1_you: {
+    text: `그래. 바로 *너*.
+
+{{대답을 해야겠어. 이봐요! 난 누구죠? 이게 어떻게 된 일이냐고요!|d1_gurgle}}`
+  },
+
+  d1_gurgle: {
+    text: `목소리가 부글거리며 나오지 않는다.
+
+{{부글거린다고?|d1_water}}`
+  },
+
+  d1_water: {
+    darken: 0.85,          // 이 창이 뜨면 배경이 서서히 어두워짐 (0~1, 클수록 어두움)
+    darkenTime: 7000,      // 어두워지는 데 걸리는 시간(밀리초)
+    text: `머리 끝까지 물에 잠기고 거센 기포가 시야를 가린다. 발밑에 도사린 어둠이 하늘까지 번져간다.
+
+{{… ….|d1_dots}}`
+  },
+
+  d1_dots: {
+    text: `{{… … ….|>day2}}`
+  },
+
+  /* ---------- 동거 265일째 ---------- */
+  day2: {
+    chapter: "동거 265일째",
+    text: `어둡다. 먹구름이 몰려든다.
+천둥소리가 울리며 곧 한 방울, 두 방울, 빗줄기가 시원하게 쏟아진다.
+
+{{허공에서 성가신 날갯짓 소리가 들린다.|d265_wings}}
+{{침대 위로 불룩 솟은 윤곽이 보인다.|d265_bed}}`
+  },
+
+  d265_wings: {
+    text: `파리 한 마리가 비행한다. 병상에서 곧 끊어질듯한 노인의 호흡을 닮았다. 그 지긋지긋한 소리는 녀석이 착지한 이래로 들리지 않는다.
+
+{{그것 참 다행이네.|d265_fly2}}`
+  },
+
+  d265_fly2: {
+    text: `당신의 위에 있다.
+
+{{씨발, 안 떨어져? (떨쳐내려고 노력해본다.)|d265_fly3}}`
+  },
+
+  d265_fly3: {
+    text: `파리는 떨어지지 않는다.`
+  },
+
+  d265_bed: {
+    text: `윤곽은 윤곽일 뿐. 그 불분명한 형체는 당신이 상상하는 무엇이든 될 수 있다.
+
+{{침대 위라면 당연 이불이 있어야지.|d265_guess}}
+{{알겠다. 이건 시체야.|d265_guess}}
+{{잠깐만, 저거 내가 잊어버린 *뭔가* 같은데?|d265_guess}}`
+  },
+
+  d265_guess: {      // 위 세 선택지가 모두 이 창으로 이어집니다
+    text: `어쩌면. 어쨌거나 하나의 가설에 불과하다. 생각이 깊어지기 전에 방의 문이 열린다.
+
+{{(자신도 모르게 숨을 죽인다.)|d265_man}}`
+  },
+
+  d265_man: {
+    text: `열린 문으로 들어온 남자가 침대 가까이로 몸을 숙인다. 그 그림자는 이불 무덤과 잠시 하나가 되었다가, 다정한 인삿말을 끝으로 다시 둘이 된다.
+
+“성원아, 좋은 아침. 오늘은 퇴근하고 오면 너 좋아하는 거 먹자.”
+
+{{(들려오는 대답은 없다.)|d265_end}}`
+  },
+
+  d265_end: {
+    text: `“아무나 문 열어주면 안 된다?”
+문이 한 번 더 열렸다가 닫힌다. 방안은 조용하다.`
+  },
+
+  /* ---------- 동거 268일째 ---------- */
+  day268: {
+    chapter: "동거 268일째",
+    text: `계속되는 비는 날짜의 흐름을 가늠하기 어렵게 만든다. 다만 당신은 시간 밖에서 존재하는 법을 알 수 없기 때문에, 당신의 존재는 곧 시간이 흐르고 있다는 단서가 된다.
+
+같은 풍경. 비슷한 일과들…….
+
+{{하지만 시간은 흐르고 있다.|d268_time}}`
+  },
+
+  d268_time: {
+    text: `빗방울이 창을 두드리고, 주변은 여전히 어둡다. 당신의 눈 앞에는 침대 위로 불룩 솟은 형체가 있고, 정해진 시간이 되면…
+
+{{남자가 방에 들어오고, 인사를 나눈다.|d268_greet}}
+{{아니면, 잠을 자거나.|d268_sleep}}`
+  },
+
+  /* --- 갈래 A: 남자가 방에 들어오고, 인사를 나눈다 --- */
+  d268_greet: {
+    text: `“좋은 아침이야, 성원아.”
+“… ….”
+“왜 그래. 몸이 더 안 좋아진 것 같아?”
+
+{{(들려오는 대답은 없다.)|d268_a2}}`
+  },
+
+  d268_a2: {
+    text: `“…그러면 안 되는데. 엄마하고 상의해야겠어. 이런 경우는…….”
+“나도 처음이라서.”
+이불이 바스락댄다. 두 연인이 입맞춤으로 사랑을 확인하는 순간이다.
+
+{{(이 애정행각을 잠시 눈감아 주기로 한다.)|d268_a3}}`
+  },
+
+  d268_a3: {
+    text: `“…사랑해, 성원아.”
+“……나도.”
+문이 열리고 닫힌다. 비틀거리는 걸음이 점차 멀어진다.`
+  },
+
+  /* --- 갈래 B: 아니면, 잠을 자거나 --- */
+  d268_sleep: {
+    text: `“많이 기다렸지?”
+퇴근시간이 되어 남자가 집으로 돌아온다. 그는 옷을 갈아입기 위해 옷장 앞에 섰지만 그대로 붙박은 듯 움직이지 않는다.
+
+{{잠깐, 왜 아무것도 안 보이는 거야?|d268_b2}}`
+  },
+
+  d268_b2: {
+    text: `“미안, …더 빨리 오려고 했는데. 마감이 늦어져서.”
+그가 멀어진다. 그가 지친 몸을 끌고 침대에 눕는다.
+
+{{(들려오는 대답은 없다.)|d268_b3}}`
+  },
+
+  d268_b3: {
+    text: `“…이상하게 비가 안 그치네.”
+“혹시 네가 그런 거야?”
+희미한 웃음 소리가 흩어진다.`
+  },
+
+  /* ---------- 동거 270일째 ---------- */
+  day270: {
+    chapter: "동거 270일째",
+    text: `“네가 자주 하던 말이 있어.”
+“난 쓸데없는 걱정이 너무 많다고…,”
+“결국에는 다 잘 될 거라고 말이야.”
+
+{{… ….|d270_2}}`
+  },
+
+  d270_2: {
+    text: `“지금도 그래.”
+“살다 보면 갑작스러운 순간들이 너무 많았어.”
+“애초에 네가 내게 온 것부터가…….”
+
+{{아니야. 난 널 계속 보고 있었어.|d270_3}}`
+  },
+
+  d270_3: {
+    text: `“가끔 네가 없는 미래를 생각해봤어.”
+
+{{줄곧 모르는 척해왔을 뿐이지.|d270_4}}`
+  },
+
+  d270_4: {
+    text: `“생각해봤자 생각하고 싶지 않은 것들 투성이였지만.”
+
+{{너도, 나도.|d270_5}}`
+  },
+
+  d270_5: {
+    text: `“…악몽 같아, 전부.”
+“무서워. 성원아.”
+
+{{걱정하지 마, 건아. 내가 이대로 어딜 가겠어?|d270_6}}`
+  },
+
+  d270_6: {
+    next: ">day271",     // 글자가 다 나온 뒤 자동으로 271일째로 넘어감
+    delay: 4500,
+    text: `“그러니까…, …가지 마. 부탁이야.”`
+  },
+
+  /* ---------- 동거 271일째 ---------- */
+  day271: {
+    chapter: "동거 271일째",
+    next: "d271_2",
+    text: `‘야. 아직 거기 있었어?’`
+  },
+
+  d271_2: {
+    next: "d271_3",
+    text: `‘…야, 듣고 있으면서 모르는 척하지 말고.’`
+  },
+
+  d271_3: {
+    text: `‘이 새끼가 내 말을 계속 씹네?’
+
+{{뭐? 나 말하는 거야?|d271_4}}`
+  },
+
+  d271_4: {
+    text: `‘그래. 이 새끼야. 드디어 말이 통하네.’
+
+{{어디서 자꾸 반말이야. 너 이름이 뭐였더라, 강성원?|d271_5}}`
+  },
+
+  d271_5: {
+    next: "d271_6",
+    text: `‘네가 무슨 짓을 했는 지 알기나 해?’`
+  },
+
+  d271_6: {
+    next: "d271_7",
+    text: `‘넌 지금 모든 걸 망쳤다고.’`
+  },
+
+  d271_7: {
+    text: `‘대체 무슨 생각으로 그런 거야?’
+
+{{씨발, 내가 뭘! 난 아무 것도 몰라!|d271_8}}`
+  },
+
+  d271_8: {
+    next: "d271_9",
+    text: `‘그러시겠지!’`
+  },
+
+  d271_9: {
+    text: `‘씨발, 너만 아니었어도 우린 지금보단 나은 신세였을 거야.’
+
+{{네가 존나 무슨 말을 하는지 하나도 모르겠어.|d271_10}}`
+  },
+
+  d271_10: {
+    text: `‘넌 *살인자*야.’
+
+{{뭐…?|d271_11}}`
+  },
+
+  d271_11: {
+    text: `‘…우리 모두가 그렇지.’
+
+{{야.|d271_12}}`
+  },
+
+  d271_12: {
+    next: "d271_13",
+    text: `‘…내가 방법을 하나 알려줄게. 넌 닥치는 대로 따르는 거야.’`
+  },
+
+  d271_13: {
+    text: `‘넌 거기서 나와야 해.’
+
+{{뭐. 이 옷장에서?|d271_14}}`
+  },
+
+  d271_14: {
+    text: `‘그래. 그 좆같은 옷장.’
+
+{{하지만 무슨 수로?|d271_15}}`
+  },
+
+  /* 여기서부터는 클릭 없이 next 로 새 창이 차례로 자동 팝업됩니다 (이 앞에도 밑줄 없는 창은 자동으로 이어집니다) */
+  d271_15: {
+    next: "d271_16",
+    text: `‘내가 신호를 주면, 앞으로 아주 작은 무게만 싣는 거야.’`
+  },
+
+  d271_16: {
+    next: "d271_17",
+    text: `‘등불을 띄우는 것처럼 가볍고 부드러운 동작으로.’`
+  },
+
+  d271_17: {
+    next: "d271_18",
+    text: `‘하지만 젖먹던 힘까지 끌어낸 필사적인 움직임이어야 해.’`
+  },
+
+  d271_18: {
+    next: "d271_19",
+    text: `‘산 사람은 살아야지. 뭐든 각기 돌아갈 자리가 있는 법이잖아?’`
+  },
+
+  d271_19: {
+    place: "below",      // 앞 창(‘산 사람은 살아야지…’) 바로 아래에 이어서 출력
+    readTime: 2200,      // 글자가 다 나온 뒤 이만큼 읽을 시간을 주고
+    darkenAfter: 0.92,   // 배경이 어두워지며 지금까지의 말풍선들이 어둠 속에 묻힘
+    darkenTime: 5000,    // 어두워지는 데 걸리는 시간
+    next: "d271_20",
+    text: `‘물론, 그에 따른 대가는 치러야겠지만… ….’`
+  },
+
+  d271_20: {
+    place: "center",     // 완전히 어두워진 뒤, 화면 중앙에 출력
+    next: "d271_21",
+    text: `‘…이대로는 안 돼.’`
+  },
+
+  d271_21: {
+    place: "below",      // 앞 창(‘…이대로는 안 돼.’) 바로 아래에 이어서 출력
+    next: ">d_night",    // 글자가 다 나온 뒤 delay 만큼 읽을 시간을 주고 자동으로 다음 장으로
+    delay: 5000,
+    text: `‘어느 방향으로든, 우리는 나아가야 하니까.’`
+  },
+
+  /* ---------- 그 날, 밤 ---------- */
+  d_night: {
+    chapter: "그 날, 밤",
+    next: "dn_2",
+    text: `알기로는 꽉 찬 보름달이 뜨는 날이었다. 온종일 내려대는 빗줄기와 잔뜩 낀 먹구름에 가려져 그 모습을 직접 찾아볼 수는 없었다.`
+  },
+
+  dn_2: {
+    next: "dn_3",
+    text: `구름 속에 달이 숨어 있듯, 나는 눈으로는 확인할 수 없는 사랑의 존재를 믿는다.`
+  },
+
+  dn_3: {
+    next: "dn_4",
+    text: `그는 기꺼이 내 눈에만 보이던 영혼의 존재를 믿어주었다.`
+  },
+
+  dn_4: {
+    next: "dn_5",
+    text: `내 손에는 날붙이가 들려 있다. …이것이 아니면 안 될 것 같았다.`
+  },
+
+  dn_5: {
+    next: "dn_6",
+    text: `같은 정도의 아픔이 아니면 소용이 없을 테니까.`
+  },
+
+  dn_6: {
+    next: "dn_7",
+    text: `목을 매달아 죽은 뒤 혀를 길게 빼문 자들의 모습을 떠올린다.
+성원에게도 이 편이 나을 것이다.`
+  },
+
+  dn_7: {
+    next: "dn_8",
+    text: `심호흡을 했다. 죽음을 향한 의지는 결연하다.`
+  },
+
+  dn_8: {
+    text: `나는……
+
+{{손목에 긴 상처를 낸다.|dn_9}}
+{{허벅지를 깊게 찌른다.|dn_9}}
+{{두 눈 딱 감고, 복부에…|dn_9}}`
+  },
+
+  dn_9: {
+    shake: true,        // 이 창이 뜨기 전에 떠 있는 창들이 먼저 진동하고, 잠깐 기다린 뒤 이 창이 뜸
+    text: `‘뭐해! 지금이야!’
+
+{{(그가 알려주었던 대로 앞으로 힘을 싣는다.)|dn_10}}`
+  },
+
+  dn_10: {
+    text: `아주 작은 무게. 하지만 생사가 걸린 필사적인 몸부림.
+그 끝에 당신의 몸이 앞으로 쏟아진다.
+
+{{(기우는 방향으로 넘어진다.)|dn_11}}`
+  },
+
+  dn_11: {
+    shake: true,        // 이 창이 뜨기 전에 떠 있는 창들이 먼저 진동하고, 잠깐 기다린 뒤 이 창이 뜸
+    next: "dn_12",
+    text: `‘잘했어!’`
+  },
+
+  dn_12: {
+    next: "dn_13",
+    text: `옷장의 문이 열린다. 그곳이 자신의 자리인 것처럼 틀어박혀 있던 몸이 바닥으로 고꾸라진다. 등이 굽은 채 이마를 바닥에 대고 엎드린 모습이 마치 용서를 구하는 것 같다.`
+  },
+
+  dn_13: {
+    next: "dn_14",
+    text: `“…웃기지 마, 왜…, 왜 이제 와서!”
+칼끝이 다시 자신을 향한다.`
+  },
+
+  dn_14: {
+    next: "dn_15",
+    text: `찔러야 한다. 끝내야 한다.
+내 손으로, 이 칼로….`
+  },
+
+  dn_15: {
+    next: "dn_16",
+    text: `“… ….”`
+  },
+
+  dn_16: {
+    next: "dn_17",
+    text: `문득 줄곧 보이지 않던 그가 아직 곁에 있을 것이란 확신이 강해진다.`
+  },
+
+  dn_17: {
+    next: "dn_18",
+    text: `난 알 수 있다. 왜냐하면… …,`
+  },
+
+  dn_18: {
+    next: "dn_19",
+    text: `“…성원아, 강성원.”`
+  },
+
+  dn_19: {
+    next: "dn_20",
+    text: `뺨이 금세 뜨겁게 젖어든다. 환기 한 번 하지 않은 방 안에서 커튼이 흔들린다.
+차가운 대기가 이 안에서 움직이고 있다.`
+  },
+
+  dn_20: {
+    next: "dn_21",
+    text: `‘……건아.’`
+  },
+
+  dn_21: {
+    next: "dn_22",
+    text: `‘내 말 잘 들어, …….’`
+  },
+
+  dn_22: {
+    next: ">d_after7",     // 글자가 다 나온 뒤 delay 만큼 읽을 시간을 주고 자동으로 다음 장으로
+    delay: 5000,
+    text: `‘전화부터 하는 거야. 그 다음에는… …’`
+  },
+
+  /* ---------- 사후 7일, 초재 ---------- */
+  d_after7: {
+    chapter: "사후 7일, 초재",
+    sfx: "phone",        // 제목이 다 나온 뒤: 전화 연결음 → 달칵
+    rain: 0.45,          // 달칵 뒤부터 빗소리(rain.mp3)가 배경에서 들림 (1 이 원본 음량, 클수록 크게, 0 이면 멈춤)
+    next: "ap_talk",
+    text: `더이상 기능할 수 없게 된 것들이 봉투에 담긴다.
+기능할 수 없더라도, 다른 사료를 제시할 수 있는 물건들.
+빛이 번쩍이고, 봉지가 바스락대며, 테이프가 감기고, 발자국이 주변을 맴돌다가…
+코 앞에서 멎는다.`
+  },
+
+  ap_talk: {
+    next: "ap_talk2",
+    text: `“어휴, 봤어?”
+“그럼요. 꼼짝없이 야근하게 생겼네요….”
+“용의자는?”
+“젊은 친구예요. 바로 자수하겠더라고요. 고분고분하고.”`
+  },
+
+  ap_talk2: {
+    next: "ap_report",
+    delay: 2000,
+    text: `“그래도 한눈 팔지 마. 그런 포기한 눈을 한 놈들이 더 무서운 법이거든.”
+“알다마다요.”`
+  },
+
+  /* 사건 파일: 넓은 문서 창이 정중앙에 뜨고, 글자가 채워지며, 빗소리는 초중반에 걸쳐 서서히 사라짐 */
+  ap_report: {
+    doc: true,                         // 문서 창 (넓고, 등폭 글꼴, 길면 안에서 스크롤)
+    place: "middle",                   // 화면 정중앙
+    typeSpeed: 35,                     // 한 글자 간격(밀리초). 본문(45)보다 아주 조금만 빠르게
+    rainFade: { from: 0.12, to: 0.5 }, // 글자가 12%~50% 나오는 동안 빗소리가 점점 줄어 안 들리게 됨
+    next: ">ep_1",                     // 다 나온 뒤 delay 만큼 읽을 시간을 주고 다음 장(제목 없음)으로
+    delay: 9000,
+    text: `현장감식결과보고서
+
+사건번호   2026-004215
+사건명     살인, 사체유기 등
+발견일시   2026. 11. 13. 23시 경
+발견장소   ○○시 ○○구 ○○동 ○○빌라 3층 302호
+감식일시   2026. 11. 14. 00:10 ~ 05:50
+작성부서   ○○경찰서 과학수사팀
+
+1. 현장 개요
+ 가. 신고 경위: 피의자 A의 자수에 따라 현장 확인 차 출동.
+ 나. 출입 상태: 현관문 잠금 상태이며 강제 개방 흔적 없음.
+     피의자 A로부터 열쇠를 임의제출 받아 개방함.
+ 다. 실내 상태: 거실 및 주방은 정리된 상태이나 전체적으로 부패 취기가 심함.
+     창문은 모두 닫혀 있고 커튼이 쳐져 있음.
+
+2. 사체 현황
+ 가. 사망자 B (20세, 남성)
+  (1) 발견 위치: 안방 침대 위, 반듯이 누운 자세. 이불이 가슴 높이까지 덮여 있음.
+  (2) 사후 경과: 약 7일 경과로 추정. (정밀 시기는 부검으로 확인 요함)
+  (3) 외표 소견:
+   - 사후경직이 해소된 상태로, 배면에서 시반이 확인됨.
+   - 복부 전반의 녹색 변색과 시신 전반의 부패망이 관찰됨. 
+   - 일부 부위에 표피 박리 및 수포 형성.
+   - 상체에 다수의 자창이 있으며 방어흔이 확인됨.
+  (4) 특이사항: 안면 전체에 황색 종이 부적 다수가 겹쳐 부착되어 있음.
+     부적에는 붉은색의 한자 및 문양이 혼재되어 있고 판독이 어려움.
+
+ 나. 사망자 C (성별 남, 20대 추정)
+  (1) 발견 위치: 안방 옷장 앞. 옷장 내부에 유기된 시신이 문이 열리며
+      웅크린 자세로 바닥에 쏟아진 상태로 추정됨.
+  (2) 사후 경과: 약 7일 경과로 추정.
+  (3) 외표 소견:
+   - 사후경직이 해소된 상태이나 웅크린 자세가 그대로 유지되어 있음.
+   - 밀폐된 옷장 내부에 있었던 탓에 부패 가스의 팽만이 심하고,
+     피부 변색 및 박리의 범위가 넓음.
+   - 전신에 다수의 자창과 절창이 있고 방어흔이 확인됨.
+     손상 정도가 치사에 필요한 범위를 넘는 것으로 보임.
+
+3. 증거물
+ - 흉기: 회칼 1점. 침대 위에서 발견되었으며 루미놀 반응이 확인됨.
+ - 부적 잔여분 다수, 향 및 촛대 등 제의 도구로 보이는 물품 일체. 현장 수거함.
+
+4. 종합 의견
+ - 사망자 두 명 모두 부검 의뢰 예정임.
+ - 피의자 A의 진술 및 사망자 C의 주변 탐문 결과와의 대조가 필요함.
+
+작성일  2026. 11. 14.
+○○경찰서 과학수사팀 경위 ○○○ (인)`
+  },
+
+  /* ---------- 마지막 장 (제목 없음 · 색 반전) ---------- */
+  ep_1: {
+    theme: "invert",       // 배경·글자색 반전: 장 전환 화면은 주황색, 말풍선은 주황 바탕에 검정 글씨
+    hold: 2000,            // 제목 없이 주황 화면만 이만큼(밀리초) 보여준 뒤 시작
+    text: `‘… ….’
+
+{{그래도 이제 끝이네요.|ep_2}}`
+  },
+
+  ep_2: {
+    text: `‘…그러게. 아직 안 가고 뭐 하고 있었어?’
+
+{{이 말은 해야할 것 같아서요. 무슨 일인지 잘은 모르겠지만, 일부러 그러려던 건 아니었어요.|ep_3}}`
+  },
+
+  ep_3: {
+    next: "ep_4",
+    text: `‘… ….’`
+  },
+
+  ep_4: {
+    text: `‘알아.’
+
+{{네? 안다고요?|ep_5}}`
+  },
+
+  ep_5: {
+    next: "ep_6",
+    text: `‘그래. 안 다니까. 그래서 너랑 내가 같이 못 가는 거야.’`
+  },
+
+  ep_6: {
+    text: `‘나는 아직 끝낼 게 더 있거든.’
+
+{{그런….|ep_7}}`
+  },
+
+  ep_7: {
+    next: "ep_8",
+    text: `‘돌아가. 죽은지도 모르고 떠돌지 말고.’`
+  },
+
+  ep_8: {
+    text: `‘누가 그러는데, 그게 제일 슬픈 거랬어.’
+
+{{… ….|ep_x1}}
+{{나중에 또 볼 수 있을까요?|ep_y1}}`
+  },
+
+  ep_x1: {
+    // 갈래 1: '… ….' 를 고른 경우
+    text: `‘내 말 또 씹냐?’
+
+{{아니에요! …갈게요! (돌아간다.)|ep_f1}}`
+  },
+
+  ep_y1: {
+    // 갈래 2: '나중에 또 볼 수 있을까요?' 를 고른 경우
+    next: "ep_y2",
+    text: `‘아니, 절대!’`
+  },
+
+  ep_y2: {
+    text: `‘다신 보지 말자 우리.’
+
+{{참나. 알겠어요. (돌아간다.)|ep_f1}}`
+  },
+
+  ep_f1: {
+    // 두 갈래가 모두 여기로 합쳐짐
+    next: "ep_f2",
+    text: `‘그래도 뭐. 마지막에는….’`
+  },
+
+  ep_f2: {
+    next: "ep_f3",
+    text: `‘고마웠어.’`
+  },
+
+  ep_f3: {
+    ending: true,          // 글자가 다 나온 뒤 delay 만큼 기다렸다가 화면이 밝아지며 시작 화면으로 돌아감
+    delay: 4500,
+    text: `‘잘 가라.’`
+  }
+};
+/* 여러 갈래를 모두 읽어야 다음 장으로 넘어가게 하는 설정입니다.
+   ends: 끝까지 읽어야 하는 장면들 / go: 다 읽으면 넘어갈 장 / delay: 마지막 글자가 나온 뒤 기다리는 시간(밀리초) */
+const JOINS = [
+  { ends: ["d265_fly3", "d265_end"], go: "day268", delay: 4500 },
+  // 268일째는 두 갈래 중 하나만 끝까지 읽어도 넘어감 (ends 에 한 장면씩 따로 적으면 됩니다)
+  { ends: ["d268_a3"], go: "day270", delay: 4500 },
+  { ends: ["d268_b3"], go: "day270", delay: 4500 }
+];
+
+/* ================= 아래는 건드리지 않아도 되는 엔진 부분 ================= */
+
+const stage = document.getElementById("stage");
+const open = {};      // 열려 있는 창
+let zTop = 10;
+const pending = new Set();    // 진동 후 열리기를 기다리는 장면들
+const finished = new Set();   // 글자가 끝까지 나온 장면들
+
+function esc(s) {
+  return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function render(text) {
+  return esc(text)
+    .replace(/\{\{(.+?)\|(.+?)\}\}/g, (_, label, id) => `<a class="link" data-go="${id.trim()}">${label}</a>`)
+    .replace(/\*(.+?)\*/g, "<em>$1</em>");
+}
+
+// ===== 타자기 효과음 (파일 없이 브라우저가 직접 소리를 만들어 냅니다) =====
+let audioCtx = null, soundOn = true, noiseBuf = null;
+
+function initAudio() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!audioCtx && AC) audioCtx = new AC();
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+}
+
+function playKey(soft) {
+  if (!soundOn || !audioCtx || audioCtx.state !== "running") return;
+  const t = audioCtx.currentTime, sr = audioCtx.sampleRate;
+  if (!noiseBuf) {                                   // 부드러운 '톡' 잡음을 한 번만 만들어 재사용
+    noiseBuf = audioCtx.createBuffer(1, Math.floor(sr * 0.05), sr);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+  }
+  const src = audioCtx.createBufferSource();
+  src.buffer = noiseBuf;
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = "lowpass";                              // 높은 소리를 깎아 둥글게
+  filt.frequency.value = (soft ? 700 : 1300) + Math.random() * 400;
+  filt.Q.value = 0.5;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(soft ? 0.12 : 0.2, t + 0.004);   // 아주 짧게 올려서 날카로운 클릭음 제거
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  src.connect(filt); filt.connect(g); g.connect(audioCtx.destination);
+  src.start(t);
+
+  const osc = audioCtx.createOscillator();           // 낮고 포근한 '툭' 소리
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(soft ? 120 : 170, t);
+  osc.frequency.exponentialRampToValueAtTime(70, t + 0.07);
+  const og = audioCtx.createGain();
+  og.gain.setValueAtTime(0.0001, t);
+  og.gain.linearRampToValueAtTime(0.16, t + 0.005);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+  osc.connect(og); og.connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.1);
+}
+
+function playDing() {                                 // 줄바꿈 때 은은한 종소리
+  if (!soundOn || !audioCtx || audioCtx.state !== "running") return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.value = 1175;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(0.06, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+  osc.connect(g); g.connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + 0.75);
+}
+
+// ===== 전화 연결음 + 빗소리 =====
+let rainGain = null, rainLevel = 0, rainScale = 1;
+
+// ===== 효과음 파일 (index.html 과 같은 폴더에 pickup.mp3, rain.mp3 가 있어야 합니다) =====
+const samples = {};
+async function loadSample(name, url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(res.status);
+    samples[name] = await audioCtx.decodeAudioData(await res.arrayBuffer());
+  } catch (e) {
+    console.warn("효과음 파일을 불러오지 못해 기본 합성음으로 대신합니다:", url, e);   // 파일이 없어도 게임은 계속됩니다
+  }
+}
+function preloadSounds() {
+  if (!audioCtx) return;
+  if (!samples.pickup) loadSample("pickup", "pickup.mp3");
+  if (!samples.rain) loadSample("rain", "rain.mp3");
+}
+
+// 배경 빗소리: level 은 음량(0이면 멈춤), fadeSec 초에 걸쳐 서서히 커짐. rain.mp3 를 이음새 없이 계속 반복
+function setRain(level, fadeSec) {
+  if (!audioCtx) return;
+  if (!rainGain) {
+    rainGain = audioCtx.createGain(); rainGain.gain.value = 0; rainGain.connect(audioCtx.destination);
+    const src = audioCtx.createBufferSource(); src.loop = true;
+    if (samples.rain) {
+      src.buffer = samples.rain; src.connect(rainGain); rainScale = 1;
+    } else {                                           // (예비용) 파일이 없으면 합성 빗소리
+      const sr = audioCtx.sampleRate;
+      const buf = audioCtx.createBuffer(1, sr * 3, sr);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      src.buffer = buf;
+      const hp = audioCtx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 700;
+      const lp = audioCtx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 4500;
+      src.connect(hp); hp.connect(lp); lp.connect(rainGain); rainScale = 0.1;
+    }
+    src.start();
+  }
+  rainLevel = level * rainScale;                       // 실제로 적용되는 음량
+  const t = audioCtx.currentTime;
+  rainGain.gain.cancelScheduledValues(t);
+  rainGain.gain.setValueAtTime(rainGain.gain.value, t);
+  rainGain.gain.linearRampToValueAtTime(soundOn ? rainLevel : 0, t + (fadeSec ?? 2));
+}
+
+// 가정용 전화기의 수화기를 들어올리는 소리 (거치대에서 '달칵' 떨어지고 → 스위치가 '칵' 튀어 오르고 → 몸체가 울리고 → 옷깃 스치듯 '스륵')
+let whiteBuf = null;
+function sfxBurst(t, freq, q, gain, dur) {          // 짧은 잡음 소리 (딸깍·스치는 소리의 재료)
+  if (!whiteBuf) {
+    const sr = audioCtx.sampleRate;
+    whiteBuf = audioCtx.createBuffer(1, sr, sr);
+    const d = whiteBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const s = audioCtx.createBufferSource(); s.buffer = whiteBuf;
+  const f = audioCtx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq; f.Q.value = q;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(audioCtx.destination);
+  s.start(t, Math.random() * 0.5, dur + 0.02);
+}
+function sfxPing(t, f, f2, gain, dur, type) {       // 플라스틱 몸체가 '통' 울리는 소리
+  const o = audioCtx.createOscillator(); o.type = type || "sine";
+  o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function clickSynth(t) {                             // (예비용) 파일을 못 불러왔을 때만 쓰는 합성 달칵
+  sfxPing(t, 260, 140, 0.55, 0.07);                 // 수화기가 거치대에서 떨어지는 낮은 '달'
+  sfxBurst(t, 900, 0.9, 0.45, 0.04);
+  sfxBurst(t + 0.055, 3000, 1.4, 0.85, 0.018);      // 거치대 스위치가 튀어 오르는 또렷한 '칵'
+  sfxPing(t + 0.055, 2200, 0, 0.15, 0.03, "triangle");
+  sfxBurst(t + 0.11, 2200, 1.2, 0.3, 0.015);        // 스위치가 한 번 더 걸리는 작은 '탁'
+  sfxPing(t + 0.065, 420, 300, 0.25, 0.14);         // 수화기 몸체의 짧은 울림
+  sfxBurst(t + 0.16, 1600, 0.5, 0.12, 0.2);         // 손에 쥐고 들어 올리는 '스륵'
+}
+
+// 수화기 드는 '달칵': pickup.mp3 를 재생 (없으면 합성음)
+function clickAt(t) {
+  if (!samples.pickup) { clickSynth(t); return; }
+  const src = audioCtx.createBufferSource(); src.buffer = samples.pickup;
+  const g = audioCtx.createGain(); g.gain.value = 1.0;
+  src.connect(g); g.connect(audioCtx.destination);
+  src.start(t);
+}
+
+// 전화 연결음 3번 → 달칵 (총 약 9초). 끝나면 onEnd 호출
+function playPhone(onEnd) {
+  if (soundOn && audioCtx && audioCtx.state === "running") {
+    const t0 = audioCtx.currentTime + 0.3;
+    for (let k = 0; k < 3; k++) {              // 1초 울리고 2초 쉬는 신호음 × 3
+      const st = t0 + k * 3.0;
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.linearRampToValueAtTime(0.07, st + 0.03);
+      g.gain.setValueAtTime(0.07, st + 0.97);
+      g.gain.linearRampToValueAtTime(0.0001, st + 1.0);
+      g.connect(audioCtx.destination);
+      [440, 480].forEach(f => {
+        const o = audioCtx.createOscillator(); o.type = "sine"; o.frequency.value = f;
+        o.connect(g); o.start(st); o.stop(st + 1.05);
+      });
+    }
+    clickAt(t0 + 8.2);                          // 세 번째 신호음이 끝난 뒤 '달칵'
+  }
+  setTimeout(onEnd, 9000);
+}
+
+// 장 제목이 다 나온 뒤의 소리 연출 (sfx: "phone" → 전화 연결음, rain: 0.04 → 희미한 빗소리 시작)
+function runSfx(scene, onEnd) {
+  const finish = () => { if (scene.rain !== undefined) setRain(scene.rain, 3); onEnd(); };
+  if (scene.sfx === "phone") setTimeout(() => playPhone(finish), 1000);   // 제목 후 1초 정적 → 연결음
+  else finish();
+}
+
+function keySound(ch) {
+  if (ch === "\n") return;                 // 줄바꿈에서는 소리 없음
+  else if (ch === " ") playKey(true);
+  else playKey(false);
+}
+
+// 타자기 효과: 링크(밑줄) 글자도 같이 한 글자씩 나옵니다. 창을 클릭하면 한 번에 다 나옵니다.
+let lastKeyAt = 0;   // 아주 빠르게 타이핑될 때 소리가 기관총처럼 되지 않도록 제한
+function typeText(body, onDone, speed, onProgress) {
+  speed = speed ?? TYPE_SPEED;
+  if (!TYPE_SPEED) { if (onDone) onDone(); return; }
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  const chars = nodes.map(n => Array.from(n.textContent));
+  body.style.minHeight = body.offsetHeight + "px";   // 창 크기가 들쭉날쭉하지 않게 미리 고정
+  nodes.forEach(n => { n.textContent = ""; });
+  body.classList.add("typing");
+
+  const total = chars.reduce((a, c) => a + c.length, 0);
+  let typed = 0;
+  let ni = 0, ci = 0, timer, done = false, linkWaited = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    nodes.forEach((n, i) => { n.textContent = chars[i].join(""); });
+    body.classList.remove("typing");
+    if (onDone) onDone();
+  };
+  const step = () => {
+    if (ni >= nodes.length) { finish(); return; }
+    // 본문이 다 나온 뒤, 첫 밑줄 선택지가 나오기 전에 잠깐 쉼 (창당 한 번)
+    if (!linkWaited && ci === 0 && ni > 0 && nodes[ni].parentElement.closest("a.link")) {
+      linkWaited = true;
+      timer = setTimeout(step, LINK_DELAY);
+      return;
+    }
+    ci++;
+    nodes[ni].textContent = chars[ni].slice(0, ci).join("");
+    const last = chars[ni][ci - 1];
+    typed++;
+    if (onProgress) onProgress(typed / total);
+    const now = performance.now();
+    if (now - lastKeyAt > 30) { keySound(last); lastKeyAt = now; }
+    body.scrollTop = body.scrollHeight;            // 길면 따라 내려가며 보여줌
+    if (ci >= chars[ni].length) { ni++; ci = 0; }
+    timer = setTimeout(step, ".,!?…".includes(last) ? speed * 6 : speed);   // 문장부호에서 잠깐 쉼
+  };
+  body.addEventListener("pointerdown", finish, { once: true });
+  step();
+}
+
+// 배경 어둡게: value 0(원래대로) ~ 1(완전 암흑), ms 는 걸리는 시간
+function setDim(value, ms) {
+  const dim = document.getElementById("dim");
+  dim.style.transitionDuration = ms + "ms";
+  dim.style.opacity = value;
+  if (value === 0) dim.style.zIndex = 1;   // 원래대로 돌아오면 어둠 막은 다시 창들 아래로
+}
+
+// 진동: 지금 떠 있는 모든 창이 잠깐 떨림
+function shakeAll() {
+  Object.values(open).forEach(n => {
+    n.classList.remove("shaking");
+    void n.offsetWidth;
+    n.classList.add("shaking");
+    setTimeout(() => n.classList.remove("shaking"), 650);
+  });
+}
+
+function focusNote(el) { el.style.zIndex = ++zTop; }
+
+function openScene(id, from, afterShake) {
+  const scene = STORY[id];
+  if (!scene) { console.warn("없는 장면:", id); return; }
+
+  // shake: true 인 장면은 먼저 떠 있는 창들이 진동하고, shakeWait(기본 1.1초) 뒤에 새 창이 뜸
+  if (scene.shake && !afterShake && !open[id]) {
+    if (pending.has(id)) return;
+    pending.add(id);
+    shakeAll();
+    setTimeout(() => { pending.delete(id); openScene(id, from, true); }, scene.shakeWait ?? 1100);
+    return;
+  }
+
+  if (open[id]) {                       // 이미 열려 있으면 앞으로 + 깜빡임
+    focusNote(open[id]);
+    open[id].classList.remove("flash");
+    void open[id].offsetWidth;
+    open[id].classList.add("flash");
+    return;
+  }
+
+  const el = document.createElement("div");
+  el.className = "note";
+  if (scene.doc) el.classList.add("doc");
+  el.innerHTML = `<div class="body">${render(scene.text)}</div>`;
+  if (/\}\}\s*$/.test(scene.text)) el.firstChild.classList.add("ends-link");
+  stage.appendChild(el);
+  focusNote(el);
+  open[id] = el;
+
+  // 위치: 부모 창 옆으로 살짝 어긋나게, 첫 창은 가운데 부근
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let x, y, exact = false;
+  if (scene.place === "middle") {                  // place: "middle" → 화면 정중앙 (문서 창용)
+    x = (innerWidth - w) / 2;
+    y = (innerHeight - h) / 2;
+    exact = true;
+  } else if (scene.place === "center") {                  // place: "center" → 화면 중앙 (아래로 이어질 창과 한 쌍으로 가운데 오도록 약간 위)
+    x = (innerWidth - w) / 2;
+    y = innerHeight / 2 - h - 5;
+    exact = true;
+  } else if (scene.place === "below" && from) {    // place: "below" → 앞 창 바로 아래에 이어 붙임
+    const r = from.getBoundingClientRect();
+    x = r.left;
+    y = r.bottom + 10;
+    if (y + h > innerHeight - 8) y = r.top - h - 10;   // 아래 공간이 모자라면 위에 붙임
+    exact = true;
+  } else if (from) {
+    const r = from.getBoundingClientRect();
+    x = r.left + 36 + Math.random() * 40;
+    y = r.top + 50 + Math.random() * 40;
+  } else {
+    x = (innerWidth - w) / 2;
+    y = Math.max(20, (innerHeight - h) / 3);
+  }
+  if (!exact && (x > innerWidth - w - 8 || y > innerHeight - h - 8)) {   // 자리가 없으면 화면 중앙 부근에서 다시 시작
+    x = (innerWidth - w) / 2 + (Math.random() - 0.5) * innerWidth * 0.12;
+    y = (innerHeight - h) / 2 + (Math.random() - 0.5) * innerHeight * 0.12;
+  }
+  x = Math.min(Math.max(8, x), Math.max(8, innerWidth - w - 8));
+  y = Math.min(Math.max(8, y), Math.max(8, innerHeight - h - 8));
+  el.style.left = x + "px";
+  el.style.top = y + "px";
+  if (scene.fadeOthers !== undefined)               // fadeOthers: 0.25 → 이미 떠 있던 다른 창들이 희미해짐 (0~1)
+    Object.keys(open).forEach(k => { if (k !== id) open[k].style.opacity = scene.fadeOthers; });
+  if (scene.darken !== undefined) setDim(scene.darken, scene.darkenTime ?? 7000);
+  // rainFade: {from: 0.12, to: 0.5} → 글자가 12%~50% 나오는 동안 빗소리가 서서히 줄어 안 들리게 됨
+  const rf = scene.rainFade, rainBase = rainLevel;
+  let rfLast = -1;
+  const onProgress = f => {
+    if (!rf || !rainGain) return;
+    const k = Math.round(Math.min(1, Math.max(0, (f - rf.from) / (rf.to - rf.from))) * 50) / 50;
+    if (k === rfLast) return;
+    rfLast = k;
+    rainLevel = rainBase * (1 - k);
+    rainGain.gain.setTargetAtTime(soundOn ? rainLevel : 0, audioCtx.currentTime, 0.5);
+  };
+  typeText(el.querySelector(".body"), () => {
+    if (rf) onProgress(1);
+    finished.add(id);
+    let nextDelay = scene.delay ?? 1200;
+    if (scene.darkenAfter !== undefined) {   // 글자가 다 나온 뒤: 읽을 시간 → 어둠이 기존 창들까지 덮음 → 다 어두워진 뒤 다음 창
+      const read = scene.readTime ?? 2200, dark = scene.darkenTime ?? 5000;
+      setTimeout(() => {
+        document.getElementById("dim").style.zIndex = ++zTop;   // 지금까지의 창들 위로 어둠을 올림 (이후에 뜨는 창은 그 위)
+        Object.values(open).forEach(n => { n.style.pointerEvents = "none"; });   // 묻힌 창들은 더 이상 누르거나 끌 수 없음
+        setDim(scene.darkenAfter, dark);
+      }, read);
+      nextDelay = read + dark + 1000;
+    }
+    if (scene.next) setTimeout(() => {
+      if (!el.isConnected) return;                                        // 그 사이 장이 넘어가 창이 지워졌다면 무시
+      if (scene.next.startsWith(">")) chapterJump(scene.next.slice(1));   // > 로 시작하면 자동으로 다음 날로
+      else openScene(scene.next, el);
+    }, nextDelay);
+    if (scene.ending) setTimeout(endGame, scene.delay ?? 4000);   // ending: true → 화면이 밝아지며 시작 화면으로
+    JOINS.forEach(j => {                    // 갈래를 모두 읽었는지 확인
+      if (j.ends.includes(id) && j.ends.every(e => finished.has(e))) setTimeout(() => chapterJump(j.go), j.delay ?? 4500);
+    });
+  }, scene.typeSpeed ?? TYPE_SPEED, onProgress);
+
+  // 클릭하면 앞으로
+  el.addEventListener("pointerdown", () => focusNote(el));
+  // 링크
+  el.querySelectorAll("a.link").forEach(a => a.onclick = () => {
+    a.classList.add("visited");
+    const go = a.dataset.go;
+    if (go.startsWith(">")) chapterJump(go.slice(1).trim());   // > 로 시작하면 날짜 넘기기
+    else openScene(go, el);
+  });
+  // 드래그 (마우스·터치 모두)
+  el.addEventListener("pointerdown", e => {
+    if (e.target.closest("a.link")) return;   // 밑줄 링크는 드래그 대신 클릭으로
+    if (el.classList.contains("doc")) return;   // 문서 창은 스크롤이 되도록 끌기 없음
+    const dx = e.clientX - el.offsetLeft, dy = e.clientY - el.offsetTop;
+    el.setPointerCapture(e.pointerId);
+    const move = ev => {
+      el.style.left = Math.min(Math.max(0, ev.clientX - dx), innerWidth - 60) + "px";
+      el.style.top = Math.min(Math.max(0, ev.clientY - dy), innerHeight - 40) + "px";
+    };
+    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  });
+}
+
+// 날짜 넘기기: 암전 → 모든 메모 삭제 → (제목 카드) → 새 메모 등장
+const fade = document.getElementById("fade");
+let jumping = false;
+
+// 장(날짜) 제목을 본문처럼 한 글자씩, 효과음과 함께 타이핑
+function typeChapter(text, onDone) {
+  const chars = Array.from(text);
+  if (!TYPE_SPEED) { fade.textContent = text; onDone(); return; }
+  let i = 0;
+  const step = () => {
+    i++;
+    fade.textContent = chars.slice(0, i).join("");
+    keySound(chars[i - 1]);
+    if (i >= chars.length) { onDone(); return; }
+    setTimeout(step, TYPE_SPEED * 3);        // 본문보다 세 배 느리게 (숫자가 클수록 느림)
+  };
+  step();
+}
+
+function chapterJump(id) {
+  const scene = STORY[id];
+  if (!scene || jumping) return;
+  jumping = true;
+  if (scene.theme !== undefined) fade.classList.toggle("invert", scene.theme === "invert");   // 전환 화면 색
+  fade.classList.add("on");                  // 1) 어두운 빈 화면으로 전환
+  setTimeout(() => {
+    Object.keys(open).forEach(k => { open[k].remove(); delete open[k]; });
+    setDim(0, 0);                            // 날짜가 넘어가면 배경도 원래 밝기로
+    finished.clear();
+    if (scene.theme !== undefined) document.body.classList.toggle("invert", scene.theme === "invert");   // 가려진 사이에 색 반전
+    if (scene.bg) document.documentElement.style.setProperty("--bg-image", `url("${scene.bg}")`);
+    fade.textContent = "";
+    const proceed = () => {                  // 3) 제목이 완전히 사라진 뒤, 잠깐 빈 화면을 거쳐 본문 창 등장
+      fade.classList.remove("on");           //    (제목이 서서히 걷히는 중에는 본문을 띄우지 않음)
+      setTimeout(() => {
+        fade.textContent = "";
+        setTimeout(() => { openScene(id); jumping = false; }, 600);   // 빈 화면 유지 시간(밀리초)
+      }, 700);
+    };
+    if (scene.chapter) {
+      setTimeout(() => typeChapter(scene.chapter, () => runSfx(scene, () => setTimeout(proceed, 2000))), 800);   // 2) 제목 타이핑 → (소리 연출) → 머묾
+    } else {
+      if (scene.rain !== undefined) setRain(scene.rain, 3);
+      setTimeout(proceed, scene.hold ?? 300);
+    }
+  }, 600);
+}
+
+// 엔딩: 화면이 밝아지며 모든 것을 초기화하고 시작 화면으로 돌아감
+function endGame() {
+  if (jumping) return;
+  jumping = true;
+  fade.classList.remove("invert");
+  fade.style.zIndex = 100002;                         // 시작 화면 위까지 밝은 화면으로 덮음
+  fade.style.transitionDuration = "2.5s";             // 서서히 밝아짐
+  fade.classList.add("bright", "on");                 // 1) 화면이 환하게 밝아짐
+  if (rainGain) setRain(0, 2.5);                      // 남아 있던 빗소리도 같이 잦아듦
+  setTimeout(() => {
+    Object.keys(open).forEach(k => { open[k].remove(); delete open[k]; });
+    finished.clear(); pending.clear();
+    setDim(0, 0);
+    document.body.classList.remove("invert");
+    fade.textContent = "";
+    document.getElementById("start").classList.remove("hide");   // 2) 밝은 화면 뒤에서 시작 화면 준비
+    setTimeout(() => {
+      fade.style.transitionDuration = "2s";
+      fade.classList.remove("on");                    // 3) 밝은 화면이 천천히 걷히며 시작 화면이 나타남
+      setTimeout(() => {
+        fade.classList.remove("bright");
+        fade.style.transitionDuration = "";
+        fade.style.zIndex = "";
+        jumping = false;
+      }, 2100);
+    }, 700);
+  }, 3000);
+}
+
+// 시작 화면 + 소리 버튼
+if (!SCREEN_FX) document.querySelectorAll(".fx").forEach(e => e.remove());
+document.getElementById("title").innerHTML =
+  esc(GAME_TITLE).replace(/[\u4E00-\u9FFF]+/g, m => `<br><span class="hanja">${m}</span>`);
+const startScreen = document.getElementById("start");
+const soundBtn = document.getElementById("sound");
+
+document.addEventListener("pointerdown", initAudio);   // 클릭할 때마다 소리가 막혀 있지 않은지 확인
+
+document.getElementById("startBtn").onclick = () => {
+  initAudio();
+  preloadSounds();                          // 효과음 파일 미리 불러오기
+  startScreen.classList.add("hide");
+  setTimeout(() => (STORY[FIRST_SCENE].chapter ? chapterJump(FIRST_SCENE) : openScene(FIRST_SCENE)), 350);
+};
+
+soundBtn.onclick = () => {
+  soundOn = !soundOn;
+  soundBtn.textContent = soundOn ? "소리 ON" : "소리 OFF";
+  if (rainGain) rainGain.gain.setTargetAtTime(soundOn ? rainLevel : 0, audioCtx.currentTime, 0.2);
+};
+</script>
+</body>
+</html>
